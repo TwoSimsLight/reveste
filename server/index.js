@@ -83,8 +83,27 @@ app.post('/api/track', async (req, res) => {
   }
 });
 
-// Rota de Estatísticas para o Painel Administrativo
-app.get('/api/stats', (req, res) => {
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '2257mackenzieADS';
+
+function requireAdminAuth(req, res, next) {
+  const token = req.headers['x-admin-token'] || req.query.token;
+  if (token === ADMIN_PASSWORD) {
+    return next();
+  }
+  return res.status(401).json({ success: false, error: 'Acesso não autorizado. Senha incorreta.' });
+}
+
+// Rota de Verificação de Senha do Admin
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    return res.json({ success: true, message: 'Autenticado com sucesso!' });
+  }
+  return res.status(401).json({ success: false, error: 'Senha incorreta. Tente novamente.' });
+});
+
+// Rota de Estatísticas para o Painel Administrativo (Protegida)
+app.get('/api/stats', requireAdminAuth, (req, res) => {
   try {
     const stats = getStats();
     return res.json({ success: true, stats });
@@ -94,8 +113,8 @@ app.get('/api/stats', (req, res) => {
   }
 });
 
-// Rota de Listagem de Leads (com filtro de busca)
-app.get('/api/leads', (req, res) => {
+// Rota de Listagem de Leads (Protegida com filtro de busca)
+app.get('/api/leads', requireAdminAuth, (req, res) => {
   try {
     const { search = '' } = req.query;
     const leads = getAllLeads(search);
@@ -106,8 +125,8 @@ app.get('/api/leads', (req, res) => {
   }
 });
 
-// Rota para Excluir Lead
-app.delete('/api/leads/:id', (req, res) => {
+// Rota para Excluir Lead (Protegida)
+app.delete('/api/leads/:id', requireAdminAuth, (req, res) => {
   try {
     const { id } = req.params;
     const success = deleteLead(id);
@@ -121,8 +140,8 @@ app.delete('/api/leads/:id', (req, res) => {
   }
 });
 
-// Rota para Exportar Leads em CSV (para Excel / Google Planilhas)
-app.get('/api/export', (req, res) => {
+// Rota para Exportar Leads em CSV (Protegida)
+app.get('/api/export', requireAdminAuth, (req, res) => {
   try {
     const csvData = exportLeadsToCSV();
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');

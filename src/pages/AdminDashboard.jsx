@@ -11,6 +11,9 @@ import {
   ArrowLeft, 
   ExternalLink, 
   Eye, 
+  EyeOff,
+  Lock,
+  LogOut,
   Calendar,
   Phone,
   Mail,
@@ -19,6 +22,14 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboard({ onNavigateHome }) {
+  // Estado de Autenticação com a senha específica
+  const [token, setToken] = useState(() => sessionStorage.getItem('reveste_admin_token') || '');
+  const [isAuthenticated, setIsAuthenticated] = useState(() => sessionStorage.getItem('reveste_admin_token') === '2257mackenzieADS');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
   const [stats, setStats] = useState({
     totalLeads: 0,
     submitClicks: 0,
@@ -30,18 +41,62 @@ export default function AdminDashboard({ onNavigateHome }) {
   });
 
   const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [statusMsg, setStatusMsg] = useState('');
 
+  // Submissão do Formulário de Senha
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoginLoading(true);
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordInput })
+      });
+      const data = await res.json();
+
+      if (data.success || passwordInput === '2257mackenzieADS') {
+        sessionStorage.setItem('reveste_admin_token', passwordInput);
+        setToken(passwordInput);
+        setIsAuthenticated(true);
+      } else {
+        setLoginError('Senha incorreta. Acesso não permitido.');
+      }
+    } catch {
+      // Fallback de validação direta
+      if (passwordInput === '2257mackenzieADS') {
+        sessionStorage.setItem('reveste_admin_token', passwordInput);
+        setToken(passwordInput);
+        setIsAuthenticated(true);
+      } else {
+        setLoginError('Senha incorreta. Acesso não permitido.');
+      }
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('reveste_admin_token');
+    setToken('');
+    setIsAuthenticated(false);
+    setPasswordInput('');
+  };
+
   // Carregar estatísticas e leads
   const fetchData = async () => {
+    if (!isAuthenticated) return;
     setLoading(true);
     try {
+      const authHeader = { 'x-admin-token': token || '2257mackenzieADS' };
       const [statsRes, leadsRes] = await Promise.all([
-        fetch('/api/stats'),
-        fetch(`/api/leads?search=${encodeURIComponent(searchTerm)}`)
+        fetch('/api/stats', { headers: authHeader }),
+        fetch(`/api/leads?search=${encodeURIComponent(searchTerm)}`, { headers: authHeader })
       ]);
 
       const statsData = await statsRes.json();
@@ -62,13 +117,18 @@ export default function AdminDashboard({ onNavigateHome }) {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [isAuthenticated]);
 
   // Busca em tempo real com debounce
   useEffect(() => {
+    if (!isAuthenticated) return;
     const timer = setTimeout(() => {
-      fetch(`/api/leads?search=${encodeURIComponent(searchTerm)}`)
+      fetch(`/api/leads?search=${encodeURIComponent(searchTerm)}`, {
+        headers: { 'x-admin-token': token || '2257mackenzieADS' }
+      })
         .then(res => res.json())
         .then(data => {
           if (data.success) setLeads(data.leads);
@@ -76,17 +136,22 @@ export default function AdminDashboard({ onNavigateHome }) {
         .catch(console.error);
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchTerm]);
+  }, [searchTerm, isAuthenticated]);
 
   const handleDeleteLead = async (id) => {
     try {
-      const res = await fetch(`/api/leads/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/leads/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': token || '2257mackenzieADS' }
+      });
       const data = await res.json();
       if (data.success) {
         setLeads(leads.filter(l => l.id !== id));
         setDeleteConfirmId(null);
         // Atualizar estatísticas após exclusão
-        const statsRes = await fetch('/api/stats');
+        const statsRes = await fetch('/api/stats', {
+          headers: { 'x-admin-token': token || '2257mackenzieADS' }
+        });
         const statsData = await statsRes.json();
         if (statsData.success) setStats(statsData.stats);
       }
@@ -130,6 +195,99 @@ export default function AdminDashboard({ onNavigateHome }) {
     }
   };
 
+  // SE NÃO ESTIVER AUTENTICADO: RENDERIZA A TELA DE LOGIN COM A SENHA ESPECÍFICA
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-sand-100/80 flex items-center justify-center p-4 font-sans">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 sm:p-10 border border-sand-300 shadow-2xl relative overflow-hidden">
+          
+          {/* Top highlight bar */}
+          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-nature-800 via-emerald-600 to-terracotta-500" />
+
+          {/* Icon Badge */}
+          <div className="w-16 h-16 rounded-2xl bg-nature-900 text-emerald-400 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-nature-900/20">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <div className="text-center mb-8">
+            <h2 className="font-display text-2xl font-bold text-nature-950 mb-2">
+              Acesso Administrativo ReVeste
+            </h2>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Área restrita. Informe a senha de administrador para visualizar as estatísticas e contatos capturados.
+            </p>
+          </div>
+
+          {/* Erro de Senha */}
+          {loginError && (
+            <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2.5 animate-shake">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          {/* Formulário de Login */}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label htmlFor="admin-pass" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
+                Senha de Acesso
+              </label>
+              <div className="relative">
+                <input
+                  id="admin-pass"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  placeholder="Digite a senha..."
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  className="w-full pl-4 pr-11 py-3.5 rounded-xl border border-sand-300 focus:ring-2 focus:ring-nature-600 focus:border-nature-600 bg-sand-50/50 text-slate-800 text-sm transition-all"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full py-3.5 px-4 rounded-xl bg-nature-900 hover:bg-nature-800 text-white font-bold text-sm shadow-lg shadow-nature-900/20 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
+            >
+              {loginLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Verificando...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Entrar no Painel</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 pt-5 border-t border-sand-200 text-center">
+            <button
+              onClick={onNavigateHome}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-nature-900 transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Voltar para a Landing Page</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  // TELA PRINCIPAL DO ADMIN (QUANDO AUTENTICADO)
   return (
     <div className="min-h-screen bg-sand-100/70 font-sans pb-20">
       
@@ -155,7 +313,7 @@ export default function AdminDashboard({ onNavigateHome }) {
                   Painel Administrativo ReVeste
                 </h1>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold uppercase tracking-wider border border-emerald-500/30">
-                  Ao Vivo
+                  AO VIVO
                 </span>
               </div>
               <p className="text-xs text-slate-400">
@@ -177,13 +335,22 @@ export default function AdminDashboard({ onNavigateHome }) {
             </button>
 
             <a
-              href="/api/export"
+              href={`/api/export?token=${encodeURIComponent(token || '2257mackenzieADS')}`}
               download="reveste-leads.csv"
               className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-nature-950 text-xs font-bold flex items-center gap-2 shadow-md shadow-emerald-500/20 active:scale-95 transition-all"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Exportar CSV</span>
             </a>
+
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-xl bg-red-950/60 hover:bg-red-900 text-red-300 text-xs font-semibold border border-red-800/50 transition-colors flex items-center gap-1 cursor-pointer"
+              title="Encerrar sessão de administrador"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sair</span>
+            </button>
           </div>
 
         </div>
@@ -313,7 +480,7 @@ export default function AdminDashboard({ onNavigateHome }) {
             </div>
           ) : (
             <div className="text-center py-6 text-slate-500 text-sm">
-              Nenhum dado geográfico registrado ainda. Preencha o formulário para testar a detecção!
+              Nenhum dado geográfico registrado ainda.
             </div>
           )}
         </div>
@@ -328,7 +495,7 @@ export default function AdminDashboard({ onNavigateHome }) {
                 Lista de Contatos Capturados ({leads.length})
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Dados armazenados com segurança no banco SQLite local
+                Dados armazenados com segurança no banco SQLite
               </p>
             </div>
 
