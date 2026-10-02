@@ -4,12 +4,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { 
+  initDatabase,
   insertLead, 
   getAllLeads, 
   deleteLead, 
   trackEvent, 
   getStats, 
-  exportLeadsToCSV 
+  exportLeadsToCSV,
+  seedDemoData
 } from './db.js';
 import { detectLocation } from './geo.js';
 
@@ -24,7 +26,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rota de registro de Leads (Formulário CTA)
+// Rota de registro de Leads (Formulário CTA da Landing Page)
 app.post('/api/leads', async (req, res) => {
   try {
     const { name, email, whatsapp, interest, timezone, locale } = req.body;
@@ -39,7 +41,7 @@ app.post('/api/leads', async (req, res) => {
     const location = await detectLocation(req, { timezone, locale });
     const userAgent = req.headers['user-agent'] || '';
 
-    const newLead = insertLead({
+    const newLead = await insertLead({
       name,
       email,
       whatsapp,
@@ -70,7 +72,7 @@ app.post('/api/track', async (req, res) => {
     const { eventType = 'submit_click', timezone, locale } = req.body;
     const location = await detectLocation(req, { timezone, locale });
 
-    trackEvent(eventType, {
+    await trackEvent(eventType, {
       country: location.country,
       country_code: location.country_code,
       ip: location.ip
@@ -103,9 +105,9 @@ app.post('/api/admin/login', (req, res) => {
 });
 
 // Rota de Estatísticas para o Painel Administrativo (Protegida)
-app.get('/api/stats', requireAdminAuth, (req, res) => {
+app.get('/api/stats', requireAdminAuth, async (req, res) => {
   try {
-    const stats = getStats();
+    const stats = await getStats();
     return res.json({ success: true, stats });
   } catch (error) {
     console.error('Erro ao obter estatísticas:', error);
@@ -114,10 +116,10 @@ app.get('/api/stats', requireAdminAuth, (req, res) => {
 });
 
 // Rota de Listagem de Leads (Protegida com filtro de busca)
-app.get('/api/leads', requireAdminAuth, (req, res) => {
+app.get('/api/leads', requireAdminAuth, async (req, res) => {
   try {
     const { search = '' } = req.query;
-    const leads = getAllLeads(search);
+    const leads = await getAllLeads(search);
     return res.json({ success: true, leads });
   } catch (error) {
     console.error('Erro ao listar leads:', error);
@@ -126,10 +128,10 @@ app.get('/api/leads', requireAdminAuth, (req, res) => {
 });
 
 // Rota para Excluir Lead (Protegida)
-app.delete('/api/leads/:id', requireAdminAuth, (req, res) => {
+app.delete('/api/leads/:id', requireAdminAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const success = deleteLead(id);
+    const success = await deleteLead(id);
     if (!success) {
       return res.status(404).json({ success: false, error: 'Contato não encontrado.' });
     }
@@ -141,15 +143,57 @@ app.delete('/api/leads/:id', requireAdminAuth, (req, res) => {
 });
 
 // Rota para Exportar Leads em CSV (Protegida)
-app.get('/api/export', requireAdminAuth, (req, res) => {
+app.get('/api/export', requireAdminAuth, async (req, res) => {
   try {
-    const csvData = exportLeadsToCSV();
+    const csvData = await exportLeadsToCSV();
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="reveste-leads.csv"');
     return res.send('\uFEFF' + csvData); // Adiciona BOM para abrir perfeitamente no Excel brasileiro
   } catch (error) {
     console.error('Erro ao exportar CSV:', error);
     return res.status(500).json({ success: false, error: 'Erro ao exportar CSV.' });
+  }
+});
+
+// Rota para Gerar Dados Demonstrativos para a Apresentação Mackenzie ADS
+app.post('/api/admin/seed', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await seedDemoData();
+    const stats = await getStats();
+    return res.json({ 
+      success: true, 
+      message: 'Dados de apresentação gerados com sucesso!', 
+      stats 
+    });
+  } catch (error) {
+    console.error('Erro ao gerar dados de demonstração:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao gerar dados demonstrativos.' });
+  }
+});
+
+// Rota para Criar Lead Manualmente pelo Painel Admin (Demonstração ao vivo para supervisão)
+app.post('/api/admin/manual-lead', requireAdminAuth, async (req, res) => {
+  try {
+    const { name, email, whatsapp, interest, country, city } = req.body;
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Nome é obrigatório.' });
+    }
+    const countryCode = country === 'Portugal' ? 'PT' : (country === 'Estados Unidos' ? 'US' : 'BR');
+    const newLead = await insertLead({
+      name,
+      email: email || '',
+      whatsapp: whatsapp || '',
+      interest: interest || 'Demonstração Mackenzie ADS',
+      country: country || 'Brasil',
+      country_code: countryCode,
+      city: city || 'São Paulo',
+      ip: 'Painel Admin',
+      userAgent: 'Admin Manual'
+    });
+    return res.json({ success: true, lead: newLead, message: 'Contato inserido com sucesso!' });
+  } catch (error) {
+    console.error('Erro ao criar lead manual:', error);
+    return res.status(500).json({ success: false, error: 'Erro ao inserir lead.' });
   }
 });
 
@@ -162,7 +206,6 @@ if (fs.existsSync(distPath)) {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 } else {
-  // Durante o desenvolvimento inicial se dist ainda não foi gerado
   app.get('/', (req, res) => {
     res.send(`
       <div style="font-family: sans-serif; text-align: center; padding: 40px;">
@@ -173,9 +216,16 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🌿 Servidor ReVeste rodando em: http://localhost:${PORT} e http://127.0.0.1:${PORT}`);
-  console.log(`📊 Painel Admin: http://localhost:${PORT}/admin`);
-  console.log(`🔌 API: http://localhost:${PORT}/api/stats`);
-});
+// Inicializar banco de dados e iniciar servidor
+async function startServer() {
+  await initDatabase();
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🌿 Servidor ReVeste rodando em: http://localhost:${PORT} e http://127.0.0.1:${PORT}`);
+    console.log(`📊 Painel Admin: http://localhost:${PORT}/admin`);
+    console.log(`🔌 API: http://localhost:${PORT}/api/stats`);
+  });
+}
 
+startServer().catch(err => {
+  console.error('Falha fatal ao iniciar o servidor:', err);
+});

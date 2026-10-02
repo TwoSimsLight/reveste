@@ -18,7 +18,13 @@ import {
   Phone,
   Mail,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Database,
+  Sparkles,
+  Plus,
+  X,
+  CheckCircle,
+  HelpCircle
 } from 'lucide-react';
 
 export default function AdminDashboard({ onNavigateHome }) {
@@ -37,7 +43,8 @@ export default function AdminDashboard({ onNavigateHome }) {
     conversionRate: 0,
     countries: [],
     timeline: [],
-    recentLeads: []
+    recentLeads: [],
+    dbEngine: 'SQLite'
   });
 
   const [leads, setLeads] = useState([]);
@@ -45,6 +52,22 @@ export default function AdminDashboard({ onNavigateHome }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [statusMsg, setStatusMsg] = useState('');
+  const [seeding, setSeeding] = useState(false);
+
+  // Modal para adicionar lead manualmente
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalSubmitting, setModalSubmitting] = useState(false);
+  const [newLead, setNewLead] = useState({
+    name: '',
+    email: '',
+    whatsapp: '',
+    interest: 'Trocar roupas usadas por desconto de 20%',
+    country: 'Brasil',
+    city: 'São Paulo'
+  });
+
+  // Modal de ajuda para conectar PostgreSQL
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Submissão do Formulário de Senha
   const handleLogin = async (e) => {
@@ -68,7 +91,6 @@ export default function AdminDashboard({ onNavigateHome }) {
         setLoginError('Senha incorreta. Acesso não permitido.');
       }
     } catch {
-      // Fallback de validação direta
       if (passwordInput === '2257mackenzieADS') {
         sessionStorage.setItem('reveste_admin_token', passwordInput);
         setToken(passwordInput);
@@ -148,7 +170,6 @@ export default function AdminDashboard({ onNavigateHome }) {
       if (data.success) {
         setLeads(leads.filter(l => l.id !== id));
         setDeleteConfirmId(null);
-        // Atualizar estatísticas após exclusão
         const statsRes = await fetch('/api/stats', {
           headers: { 'x-admin-token': token || '2257mackenzieADS' }
         });
@@ -157,6 +178,65 @@ export default function AdminDashboard({ onNavigateHome }) {
       }
     } catch (err) {
       console.error('Erro ao excluir:', err);
+    }
+  };
+
+  // Gerar dados de demonstração (ADS)
+  const handleSeedDemo = async () => {
+    setSeeding(true);
+    try {
+      const res = await fetch('/api/admin/seed', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-token': token || '2257mackenzieADS'
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatusMsg('✅ Dados de apresentação gerados com sucesso!');
+        await fetchData();
+        setTimeout(() => setStatusMsg(''), 4000);
+      }
+    } catch (err) {
+      console.error('Erro ao gerar dados:', err);
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  // Adicionar lead manualmente pelo admin
+  const handleCreateLead = async (e) => {
+    e.preventDefault();
+    setModalSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/manual-lead', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-admin-token': token || '2257mackenzieADS'
+        },
+        body: JSON.stringify(newLead)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setModalOpen(false);
+        setNewLead({
+          name: '',
+          email: '',
+          whatsapp: '',
+          interest: 'Trocar roupas usadas por desconto de 20%',
+          country: 'Brasil',
+          city: 'São Paulo'
+        });
+        setStatusMsg('✅ Contato cadastrado com sucesso!');
+        await fetchData();
+        setTimeout(() => setStatusMsg(''), 4000);
+      }
+    } catch (err) {
+      console.error('Erro ao adicionar contato manual:', err);
+    } finally {
+      setModalSubmitting(false);
     }
   };
 
@@ -201,10 +281,8 @@ export default function AdminDashboard({ onNavigateHome }) {
       <div className="min-h-screen bg-sand-100/80 flex items-center justify-center p-4 font-sans">
         <div className="max-w-md w-full bg-white rounded-3xl p-8 sm:p-10 border border-sand-300 shadow-2xl relative overflow-hidden">
           
-          {/* Top highlight bar */}
           <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-nature-800 via-emerald-600 to-terracotta-500" />
 
-          {/* Icon Badge */}
           <div className="w-16 h-16 rounded-2xl bg-nature-900 text-emerald-400 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-nature-900/20">
             <Lock className="w-8 h-8" />
           </div>
@@ -214,11 +292,10 @@ export default function AdminDashboard({ onNavigateHome }) {
               Acesso Administrativo ReVeste
             </h2>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Área restrita. Informe a senha de administrador para visualizar as estatísticas e contatos capturados.
+              Área restrita para supervisão do projeto. Informe a senha para visualizar as estatísticas e contatos.
             </p>
           </div>
 
-          {/* Erro de Senha */}
           {loginError && (
             <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2.5 animate-shake">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -226,7 +303,6 @@ export default function AdminDashboard({ onNavigateHome }) {
             </div>
           )}
 
-          {/* Formulário de Login */}
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label htmlFor="admin-pass" className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
@@ -293,7 +369,7 @@ export default function AdminDashboard({ onNavigateHome }) {
       
       {/* Top Admin Header */}
       <header className="bg-nature-950 text-white border-b border-nature-900 sticky top-0 z-40 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           
           <div className="flex items-center gap-3">
             <button
@@ -308,48 +384,87 @@ export default function AdminDashboard({ onNavigateHome }) {
             <div className="h-5 w-px bg-nature-800" />
 
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-display text-xl font-bold tracking-tight text-white">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="font-display text-lg sm:text-xl font-bold tracking-tight text-white">
                   Painel Administrativo ReVeste
                 </h1>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold uppercase tracking-wider border border-emerald-500/30">
                   AO VIVO
                 </span>
+                
+                {/* Badge do Motor de Banco de Dados */}
+                <span 
+                  onClick={() => setHelpOpen(true)}
+                  className={`cursor-pointer px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border transition-colors ${
+                    stats.dbEngine?.includes('PostgreSQL')
+                      ? 'bg-emerald-950/80 text-emerald-300 border-emerald-600/50 hover:bg-emerald-900'
+                      : 'bg-amber-950/80 text-amber-300 border-amber-600/50 hover:bg-amber-900'
+                  }`}
+                  title="Clique para saber como conectar a nuvem PostgreSQL"
+                >
+                  <Database className="w-3 h-3" />
+                  <span>{stats.dbEngine || 'SQLite'}</span>
+                  <HelpCircle className="w-2.5 h-2.5 opacity-70" />
+                </span>
               </div>
-              <p className="text-xs text-slate-400">
-                Estatísticas em tempo real, monitoramento de conversão e gestão de leads
+              <p className="text-[11px] text-slate-400">
+                Apresentação Mackenzie ADS • Monitoramento de conversão e gestão de leads
               </p>
             </div>
           </div>
 
           {/* Quick Actions */}
-          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+            
+            {/* Botão de Adicionar Lead Manual */}
+            <button
+              onClick={() => setModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-nature-900 hover:bg-nature-800 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 border border-nature-700/80 transition-all cursor-pointer shadow-xs"
+              title="Cadastrar lead de teste na hora"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Novo Contato</span>
+            </button>
+
+            {/* Botão de Gerar Dados para Apresentação */}
+            <button
+              onClick={handleSeedDemo}
+              disabled={seeding}
+              className="px-3 py-1.5 rounded-xl bg-nature-900 hover:bg-nature-800 text-amber-300 text-xs font-semibold flex items-center gap-1.5 border border-amber-500/30 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+              title="Gerar leads e métricas completos para apresentar aos supervisores"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${seeding ? 'animate-spin' : ''}`} />
+              <span>{seeding ? 'Gerando...' : 'Dados Demonstração (ADS)'}</span>
+            </button>
+
+            {/* Atualizar */}
             <button
               onClick={fetchData}
               disabled={loading}
-              className="px-3.5 py-2 rounded-xl bg-nature-900 hover:bg-nature-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 border border-nature-800 transition-all cursor-pointer disabled:opacity-50"
+              className="px-2.5 py-1.5 rounded-xl bg-nature-900 hover:bg-nature-800 text-slate-200 text-xs font-semibold flex items-center gap-1 border border-nature-800 transition-all cursor-pointer disabled:opacity-50"
               title="Atualizar dados agora"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>Atualizar</span>
+              <span className="hidden sm:inline">Atualizar</span>
             </button>
 
+            {/* Exportar CSV */}
             <a
               href={`/api/export?token=${encodeURIComponent(token || '2257mackenzieADS')}`}
               download="reveste-leads.csv"
-              className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-nature-950 text-xs font-bold flex items-center gap-2 shadow-md shadow-emerald-500/20 active:scale-95 transition-all"
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-nature-950 text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 transition-all"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Exportar CSV</span>
             </a>
 
+            {/* Sair */}
             <button
               onClick={handleLogout}
-              className="p-2 rounded-xl bg-red-950/60 hover:bg-red-900 text-red-300 text-xs font-semibold border border-red-800/50 transition-colors flex items-center gap-1 cursor-pointer"
+              className="p-1.5 rounded-xl bg-red-950/60 hover:bg-red-900 text-red-300 text-xs font-semibold border border-red-800/50 transition-colors flex items-center gap-1 cursor-pointer"
               title="Encerrar sessão de administrador"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Sair</span>
             </button>
           </div>
 
@@ -357,8 +472,37 @@ export default function AdminDashboard({ onNavigateHome }) {
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         
+        {/* Status Toast Message */}
+        {statusMsg && (
+          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center gap-2 shadow-sm animate-fade-in">
+            <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{statusMsg}</span>
+          </div>
+        )}
+
+        {/* Banner de Aviso de Persistência caso ainda esteja em SQLite */}
+        {!stats.dbEngine?.includes('PostgreSQL') && (
+          <div className="mb-6 p-4 rounded-2xl bg-amber-50/90 border border-amber-200/90 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2.5">
+              <Database className="w-5 h-5 text-amber-700 flex-shrink-0" />
+              <div>
+                <strong className="text-xs font-bold block sm:inline">Dica para sua Apresentação: </strong>
+                <span className="text-xs">
+                  O plano gratuito do Render desliga containers após 15 min sem acesso. Você pode clicar em <strong>"Dados Demonstração (ADS)"</strong> para preencher o painel a qualquer momento, ou conectar o <strong>PostgreSQL gratuito (Neon.tech)</strong> para manter dados eternamente.
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={() => setHelpOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-amber-200/80 hover:bg-amber-300 text-amber-950 text-xs font-bold whitespace-nowrap cursor-pointer transition-colors"
+            >
+              Ver Tutorial de 1 min
+            </button>
+          </div>
+        )}
+
         {/* KPI Stats Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           
@@ -495,7 +639,7 @@ export default function AdminDashboard({ onNavigateHome }) {
                 Lista de Contatos Capturados ({leads.length})
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Dados armazenados com segurança no banco SQLite
+                Dados armazenados no banco • Apresentação Mackenzie ADS
               </p>
             </div>
 
@@ -618,11 +762,16 @@ export default function AdminDashboard({ onNavigateHome }) {
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Users className="w-8 h-8 text-slate-300" />
                         <span className="font-semibold text-slate-600">
-                          {searchTerm ? 'Nenhum contato encontrado com este filtro.' : 'Nenhum lead cadastrado ainda.'}
+                          {searchTerm ? 'Nenhum contato encontrado com este filtro.' : 'Nenhum lead cadastrado no momento.'}
                         </span>
-                        <p className="text-xs text-slate-400">
-                          Abra a Landing Page e envie o formulário de teste para vê-lo aqui em tempo real.
-                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <button
+                            onClick={handleSeedDemo}
+                            className="px-4 py-2 rounded-xl bg-nature-900 text-white text-xs font-bold hover:bg-nature-800 transition-colors cursor-pointer shadow-sm"
+                          >
+                            🧪 Gerar Dados de Apresentação Agora
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -634,6 +783,191 @@ export default function AdminDashboard({ onNavigateHome }) {
         </div>
 
       </main>
+
+      {/* MODAL: Adicionar Contato Manual (Para apresentação ao vivo) */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 border border-sand-300 shadow-2xl relative animate-fade-in">
+            <div className="flex items-center justify-between pb-4 border-b border-sand-200 mb-5">
+              <div className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-display text-lg font-bold text-slate-900">
+                  Cadastrar Lead de Demonstração
+                </h3>
+              </div>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-sand-100 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateLead} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                  Nome Completo *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Carlos Eduardo Silva"
+                  value={newLead.name}
+                  onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-sand-300 text-xs focus:ring-2 focus:ring-nature-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                    E-mail
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="carlos@exemplo.com"
+                    value={newLead.email}
+                    onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-sand-300 text-xs focus:ring-2 focus:ring-nature-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                    WhatsApp
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="(11) 98765-4321"
+                    value={newLead.whatsapp}
+                    onChange={(e) => setNewLead({ ...newLead, whatsapp: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-sand-300 text-xs focus:ring-2 focus:ring-nature-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                    País
+                  </label>
+                  <select
+                    value={newLead.country}
+                    onChange={(e) => setNewLead({ ...newLead, country: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-sand-300 text-xs focus:ring-2 focus:ring-nature-600"
+                  >
+                    <option value="Brasil">Brasil 🇧🇷</option>
+                    <option value="Portugal">Portugal 🇵🇹</option>
+                    <option value="Estados Unidos">Estados Unidos 🇺🇸</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                    Cidade
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: São Paulo"
+                    value={newLead.city}
+                    onChange={(e) => setNewLead({ ...newLead, city: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-sand-300 text-xs focus:ring-2 focus:ring-nature-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-700 mb-1">
+                  Interesse
+                </label>
+                <select
+                  value={newLead.interest}
+                  onChange={(e) => setNewLead({ ...newLead, interest: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-sand-300 text-xs focus:ring-2 focus:ring-nature-600"
+                >
+                  <option value="Trocar roupas usadas por desconto de 20%">Trocar roupas usadas por desconto de 20%</option>
+                  <option value="Comprar roupas básicas em algodão orgânico">Comprar roupas básicas em algodão orgânico</option>
+                  <option value="Conhecer o projeto de moda circular e ética">Conhecer o projeto de moda circular e ética</option>
+                  <option value="Apresentação Mackenzie ADS">Demonstração Mackenzie ADS</option>
+                </select>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-sand-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={modalSubmitting}
+                  className="px-5 py-2 rounded-xl bg-nature-900 hover:bg-nature-800 text-white text-xs font-bold shadow-md cursor-pointer disabled:opacity-50"
+                >
+                  {modalSubmitting ? 'Salvando...' : 'Salvar Contato'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Tutorial Rápido de Conexão com PostgreSQL Neon */}
+      {helpOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 border border-sand-300 shadow-2xl relative animate-fade-in max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-sand-200 mb-4">
+              <div className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-display text-lg font-bold text-slate-900">
+                  Como ter Banco de Dados 100% Permanente
+                </h3>
+              </div>
+              <button
+                onClick={() => setHelpOpen(false)}
+                className="p-1.5 rounded-xl hover:bg-sand-100 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
+              <p>
+                <strong>Por que o Render reseta o SQLite?</strong> O plano gratuito do Render desliga o servidor após 15 minutos sem visitas para economizar energia. Como o SQLite grava em um arquivo de disco temporário, ao religar o arquivo volta ao estado do Git.
+              </p>
+              
+              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+                <h4 className="font-bold text-xs mb-1">Como resolver definitivamente com PostgreSQL Grátis:</h4>
+                <ol className="list-decimal pl-4 space-y-1.5 mt-2">
+                  <li>Acesse <strong>neon.tech</strong> e faça login com seu GitHub (1 clique).</li>
+                  <li>Copie a URL de conexão do PostgreSQL (começa com <code>postgres://...</code>).</li>
+                  <li>No painel do Render, vá em <strong>Environment</strong> e adicione a variável:
+                    <div className="font-mono text-[11px] bg-white p-1.5 rounded-lg border border-emerald-300 my-1 text-slate-800">
+                      DATABASE_URL = postgres://seu-link-do-neon
+                    </div>
+                  </li>
+                  <li>Pronto! O sistema detecta automaticamente e salva tudo na nuvem sem resetar nunca mais.</li>
+                </ol>
+              </div>
+
+              <div className="p-3 rounded-xl bg-sand-100 border border-sand-300 text-slate-700">
+                <strong>💡 Garantia para sua apresentação:</strong>
+                <p className="mt-1">
+                  Enquanto não configurar o PostgreSQL, você pode usar o botão <strong>"Dados Demonstração (ADS)"</strong> no topo para preencher a tela na hora da apresentação com 1 clique!
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-5 mt-4 border-t border-sand-200 text-right">
+              <button
+                onClick={() => setHelpOpen(false)}
+                className="px-5 py-2 rounded-xl bg-nature-900 text-white text-xs font-bold"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
